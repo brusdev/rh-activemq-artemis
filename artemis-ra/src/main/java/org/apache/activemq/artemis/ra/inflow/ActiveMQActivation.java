@@ -39,6 +39,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.resource.spi.work.WorkException;
+
 import org.apache.activemq.artemis.api.core.ActiveMQException;
 import org.apache.activemq.artemis.api.core.ActiveMQExceptionType;
 import org.apache.activemq.artemis.api.core.ActiveMQNonExistentQueueException;
@@ -103,6 +104,8 @@ public class ActiveMQActivation {
     */
    private boolean isTopic = false;
 
+   private boolean staticOnly = false;
+
    /**
     * Is the delivery transacted
     */
@@ -111,7 +114,8 @@ public class ActiveMQActivation {
    private ActiveMQDestination destination;
 
    /**
-    * The name of the temporary subscription name that all the sessions will share
+    * The name of the temporary subscription name that all the sessions will
+    * share
     */
    private SimpleString topicTemporaryQueue;
 
@@ -168,6 +172,9 @@ public class ActiveMQActivation {
       this.ra = ra;
       this.endpointFactory = endpointFactory;
       this.spec = spec;
+
+      this.staticOnly = !ra.getUseTopologyForLoadBalancing() && !ra.getHA();
+
       try {
          isDeliveryTransacted = endpointFactory.isDeliveryTransacted(ActiveMQActivation.ONMESSAGE);
       } catch (Exception e) {
@@ -705,8 +712,9 @@ public class ActiveMQActivation {
       long setupInterval = spec.getSetupInterval();
 
       // Only enter the reconnect loop once
-      if (inReconnect.getAndSet(true))
+      if (inReconnect.getAndSet(true)) {
          return;
+      }
       try {
          Throwable lastException = failure;
          while (deliveryActive.get() && (setupAttempts == -1 || reconnectCount < setupAttempts)) {
@@ -800,30 +808,41 @@ public class ActiveMQActivation {
 
       @Override
       public void nodeUP(TopologyMember member, boolean last) {
-         boolean newNode = false;
 
-         String id = member.getNodeId();
-         if (!nodes.contains(id)) {
-            if (removedNodes.get(id) == null || (removedNodes.get(id) != null && removedNodes.get(id) < member.getUniqueEventID())) {
-               nodes.add(id);
-               newNode = true;
-            }
+         if (logger.isTraceEnabled()) {
+            logger.trace("nodeUp: " + member.toURI());
          }
+         if (!staticOnly) {
+            boolean newNode = false;
 
-         if (lastReceived && newNode) {
-            ActiveMQRALogger.LOGGER.rebalancingConnections("nodeUp " + member.toString());
-            startReconnectThread("NodeUP Connection Rebalancer");
-         } else if (last) {
-            lastReceived = true;
+            String id = member.getNodeId();
+            if (!nodes.contains(id)) {
+               if (removedNodes.get(id) == null || (removedNodes.get(id) != null && removedNodes.get(id) < member.getUniqueEventID())) {
+                  nodes.add(id);
+                  newNode = true;
+               }
+            }
+
+            if (lastReceived && newNode) {
+               ActiveMQRALogger.LOGGER.rebalancingConnections("nodeUp " + member.toString());
+               startReconnectThread("NodeUP Connection Rebalancer");
+            } else if (last) {
+               lastReceived = true;
+            }
          }
       }
 
       @Override
       public void nodeDown(long eventUID, String nodeID) {
-         if (nodes.remove(nodeID)) {
-            removedNodes.put(nodeID, eventUID);
-            ActiveMQRALogger.LOGGER.rebalancingConnections("nodeDown " + nodeID);
-            startReconnectThread("NodeDOWN Connection Rebalancer");
+         if (logger.isTraceEnabled()) {
+            logger.trace("nodeDown: " + nodeID);
+         }
+         if (!staticOnly) {
+            if (nodes.remove(nodeID)) {
+               removedNodes.put(nodeID, eventUID);
+               ActiveMQRALogger.LOGGER.rebalancingConnections("nodeDown " + nodeID);
+               startReconnectThread("NodeDOWN Connection Rebalancer");
+            }
          }
       }
    }
