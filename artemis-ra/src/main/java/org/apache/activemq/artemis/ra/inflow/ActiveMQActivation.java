@@ -352,7 +352,7 @@ public class ActiveMQActivation {
 
       Map<String, String> recoveryConfProps = new HashMap<>();
       recoveryConfProps.put(XARecoveryConfig.JNDI_NAME_PROPERTY_KEY, ra.getJndiName());
-      resourceRecovery = ra.getRecoveryManager().register(factory, spec.getUser(), spec.getPassword(), recoveryConfProps);
+      resourceRecovery = ra.getRecoveryManager().register(factory, spec.getUserName(), spec.getPassword(), recoveryConfProps);
       if (spec.isRebalanceConnections()) {
          factory.getServerLocator().addClusterTopologyListener(new RebalancingListener());
       }
@@ -495,7 +495,7 @@ public class ActiveMQActivation {
       ClientSession result = null;
 
       try {
-         result = ra.createSession(cf, spec.getAcknowledgeModeInt(), spec.getUser(), spec.getPassword(), ra.getPreAcknowledge(), ra.getDupsOKBatchSize(), ra.getTransactionBatchSize(), isDeliveryTransacted, spec.isUseLocalTx(), spec.getTransactionTimeout());
+         result = ra.createSession(cf, spec.getAcknowledgeModeInt(), spec.getUserName(), spec.getPassword(), ra.getPreAcknowledge(), ra.getDupsOKBatchSize(), ra.getTransactionBatchSize(), isDeliveryTransacted, spec.isUseLocalTx(), spec.getTransactionTimeout());
 
          result.addMetaData("resource-adapter", "inbound");
          result.addMetaData(ClientSession.JMS_SESSION_IDENTIFIER_PROPERTY, "");
